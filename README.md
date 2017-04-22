@@ -2,9 +2,9 @@
 Convert existing MySQL Database into Laravel Migrations
 
 # Overview
-While migrating from some other framework to Laravel, some reverse engineering is usually required to convert our existing database into Laravel Migrations.
+While migrating from some other framework to Laravel, some reverse engineering is usually required to convert existing database into Laravel Migrations.
 
-This problem was solved by [this package](https://github.com/Xethron/migrations-generator) and we've made it simpler and easier one step ahead.
+This problem was solved by [this package](https://github.com/Xethron/migrations-generator) and we've made it simpler and easier another step ahead.
 
 You can either download and execute this Laravel 5.4 project in your own environment or visit the following link to use it right away!
 
