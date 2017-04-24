@@ -8,6 +8,9 @@ use Illuminate\Support\Facades\Auth;
 
 class MigrationController extends Controller
 {
+    /*
+     * Upload MySQL Dump file in a separate directory
+     */
 
     public function upload(Request $request)
     {
@@ -63,18 +66,18 @@ class MigrationController extends Controller
         $response = null;
 
         // Read in entire file
-        $lines = file(storage_path("uploads").'/'.$localFileName);
+        $lines = file(storage_path("uploads") . '/' . $localFileName);
 
         try
         {
             // Clear existing database
             $this->clearTempDB();
-            
+
             DB::connection(env("TEMP_DB_CONNECTION", "mysql_temp"))->transaction(function($lines) use ($lines)
             {
 
                 $tempQuery = '';
-				
+
                 // Loop through each line
                 foreach ($lines as $line)
                 {
@@ -107,18 +110,18 @@ class MigrationController extends Controller
 
         if (!$isSucceeded)
         {
-			if($errorMsg == null)
-			{
-				$errorMsg = "Unable to process given dump file!";
-			}
-			
-            $response = response(json_encode(['errorMsg'=>$errorMsg]), 400);
+            if ($errorMsg == null)
+            {
+                $errorMsg = "Unable to process given dump file!";
+            }
+
+            $response = response(json_encode(['errorMsg' => $errorMsg]), 400);
         }
-		else
-		{
-			$importedTableNames = $this->getTablesNamesOfTempDB();
-			$response = json_encode($importedTableNames);
-		}
+        else
+        {
+            $importedTableNames = $this->getTablesNamesOfTempDB();
+            $response = json_encode($importedTableNames);
+        }
 
         return $response;
     }
@@ -166,24 +169,27 @@ class MigrationController extends Controller
         /*
          * Prepare parameters for migration:generate command
          */
+        $connection = env("TEMP_DB_CONNECTION", "mysql_temp");
         $params = [];
         $params["--defaultFKNames"] = true;       // this is a switch only so skipping the value part
         $params["--defaultIndexNames"] = true;    // this is also a switch only
         $params["-n"] = true;    // this is also a switch only
         $params["-t"] = implode(",", $tableNames);  // table names should be passed as comma separated array
         $params["-p"] = $destDirectory;
-        $params["-c"] = env("TEMP_DB_CONNECTION", "mysql_temp");
+        $params["-c"] = $connection;
         $params["-q"] = true;
 
-        \Illuminate\Support\Facades\Log::debug("Params: ".json_encode($params));
+        \Illuminate\Support\Facades\Log::debug("Params: " . json_encode($params));
         // Execute the php artisan command
         \Illuminate\Support\Facades\Artisan::call("migrate:generate", $params);
 
         \Illuminate\Support\Facades\Log::debug("Migration DONE!");
+        // Omitt connection specifier from migration
+        $this->removeConnectionNameFromMigrations($destDirectory, $connection);
         // Generate a zip file name, to be downloaded later
-        $zipFileName = storage_path("migrations").'/'.self::generateRandomFileName(Auth::user()->id, "migration_", ".zip");
+        $zipFileName = storage_path("migrations") . '/' . self::generateRandomFileName(Auth::user()->id, "migration_", ".zip");
         $zipFile = self::zip($destDirectory, $zipFileName);
-        
+
         return response()->download($zipFileName);
     }
 
@@ -265,14 +271,47 @@ class MigrationController extends Controller
         // Zip archive will be created only after closing object
         $zip->close();
     }
-    
+
     private function clearTempDB()
     {
         $tables = $this->getTablesNamesOfTempDB();
-        foreach($tables as $table)
+        // Disable foreign key checks before drop tables
+        DB::connection(env("TEMP_DB_CONNECTION", "mysql_temp"))->statement("SET foreign_key_checks = 0");
+        foreach ($tables as $table)
         {
             DB::connection(env("TEMP_DB_CONNECTION", "mysql_temp"))
-                    ->statement("DROP TABLE ".$table);
+                    ->statement("DROP TABLE " . $table);
+        }
+        // Re-enable foreign key checks
+        DB::connection(env("TEMP_DB_CONNECTION", "mysql_temp"))->statement("SET foreign_key_checks = 1");
+    }
+
+    /*
+     * migrate:generate command adds a connection name in each migration
+     * it is required for this tool to work but would be unnecessary or
+     * even undesired for users. So we need to omitt it manually once
+     * migrations have been generated.
+     *
+     * Currenly migrate:generate command has no mechanism to do so,
+     * therefore, we need to open migrations one by one and update each
+     * file manually!
+     */
+
+    private function removeConnectionNameFromMigrations($migrationsDirectory, $usedConnectionName)
+    {
+        // Get all files in migrations directory
+        $fileNames = preg_grep('~\.(php)$~', scandir($migrationsDirectory));
+        // Update files one by one
+        foreach ($fileNames as $fileName)
+        {
+            // Create absolute path of file
+            $filePath = $migrationsDirectory . "/" . $fileName;
+            // Read all contents of file
+            $fileContent = file_get_contents($filePath);
+            // Omitt the connection specifier
+            $fileContent = str_replace("::connection('" . $usedConnectionName . "')->", "::", $fileContent);
+            // Write back the updated content of file
+            file_put_contents($filePath, $fileContent);
         }
     }
 
