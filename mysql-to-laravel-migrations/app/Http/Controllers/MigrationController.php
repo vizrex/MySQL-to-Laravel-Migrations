@@ -280,7 +280,7 @@ class MigrationController extends Controller
         foreach ($tables as $table)
         {
             DB::connection(env("TEMP_DB_CONNECTION", "mysql_temp"))
-                    ->statement("DROP TABLE " . $table);
+                    ->statement("DROP TABLE `". $table."`");
         }
         // Re-enable foreign key checks
         DB::connection(env("TEMP_DB_CONNECTION", "mysql_temp"))->statement("SET foreign_key_checks = 1");
